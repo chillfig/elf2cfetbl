@@ -599,32 +599,57 @@ uint16_t get_st_shndx(const union Elf_Sym *Symbol)
 /**
  *
  */
+int32 performVoidFunction(int32 (*action)(), int32 *Status)
+{
+    *Status = action();
+    if (*Status != SUCCESS)
+    {
+        if (*action == GetTblDefInfo || *action == LocateAndReadUserObject)
+        {
+            FreeMemoryAllocations();
+        }
+        return *Status;
+    }
+    return SUCCESS;
+}
+
+/**
+ *
+ */
+void HandleReportVersionAndHelp()
+{
+    if (ReportVersion)
+        OutputVersionInfo();
+
+    if (OutputHelp)
+        OutputHelpInfo();
+}
+
+/**
+ *
+ */
 
 int main(int argc, char *argv[])
 {
     int32 Status = SUCCESS;
     int32 i      = 0;
 
+    // This list should include all the void functions that need to be performed chronilogically and status verified
+    int32 (*functions[])() = {GetSrcFilename, OpenSrcFile, GetElfHeader,           GetTblDefInfo,
+                              GetDstFilename, OpenDstFile, LocateAndReadUserObject};
+    int numFunctions       = sizeof(functions) / sizeof(functions[0]);
+
     Status = ProcessCmdLineOptions(argc, argv);
     if (Status != SUCCESS)
         return Status;
 
-    if (ReportVersion)
-        OutputVersionInfo();
+    HandleReportVersionAndHelp();
 
-    Status = GetSrcFilename();
-    if (OutputHelp)
-        OutputHelpInfo();
-    if (Status != SUCCESS)
-        return Status;
-
-    Status = OpenSrcFile();
-    if (Status != SUCCESS)
-        return Status;
-
-    Status = GetElfHeader();
-    if (Status != SUCCESS)
-        return Status;
+    for (i = 0; i < 3; i++)
+    {
+        if (performVoidFunction(functions[i], &Status) != SUCCESS)
+            return Status;
+    }
 
     /* Get the string section header first */
     Status = GetSectionHeader(get_e_shstrndx(&ElfHeader), &SectionHeaderStringTable);
@@ -691,27 +716,10 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    /* Read in the definition of the table file */
-    Status = GetTblDefInfo();
-    if (Status != SUCCESS)
+    for (i = 3; i < numFunctions; i++)
     {
-        FreeMemoryAllocations();
-        return Status;
-    }
-
-    Status = GetDstFilename();
-    if (Status != SUCCESS)
-        return Status;
-
-    Status = OpenDstFile();
-    if (Status != SUCCESS)
-        return Status;
-
-    Status = LocateAndReadUserObject();
-    if (Status != SUCCESS)
-    {
-        FreeMemoryAllocations();
-        return Status;
+        if (performVoidFunction(functions[i], &Status) != SUCCESS)
+            return Status;
     }
 
     Status = OutputDataToTargetFile();
